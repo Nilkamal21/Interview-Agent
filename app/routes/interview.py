@@ -34,6 +34,7 @@ class FeedbackDetail(BaseModel):
     strengths: List[str]
     gaps: List[str]
     next: List[str]
+    notAssessed: Optional[List[str]] = None
 
 class InterviewResponse(BaseModel):
     reply: str

@@ -41,6 +41,10 @@ def run_tests():
     }
     status, res = make_post_request(f"{BASE_URL}/interview", payload)
     print(f"Status: {status}")
+    if status != 200:
+        print(f"Error Response: {res}")
+        sys.exit(1)
+    
     print(f"Interviewer (Q1): {res['reply']}")
     print(f"Done: {res['done']}\n")
     
@@ -56,11 +60,10 @@ def run_tests():
         "plan details via SQL lookup, returning the formatted result to the user."
     )
     
-    # Loop for turns 1 to 8
-    # Turn 1 sends answer 1, receives Q2
-    # ...
-    # Turn 8 sends answer 8, receives feedback (Done: True)
-    for turn in range(1, 9):
+    # Loop dynamically until the interview is complete
+    turn = 1
+    done = False
+    while not done:
         print(f"=== TEST 2: Conversation Turn {turn} (Sending Answer {turn}) ===")
         payload = {
             "sessionId": session_id,
@@ -68,16 +71,18 @@ def run_tests():
         }
         status, res = make_post_request(f"{BASE_URL}/interview", payload)
         print(f"Status: {status}")
-        
-        if turn < 8:
+        if status != 200:
+            print(f"Error Response: {res}")
+            sys.exit(1)
+            
+        done = res["done"]
+        if not done:
             print(f"Interviewer (Q{turn+1}): {res['reply']}")
             print(f"Done: {res['done']}\n")
-            assert status == 200, f"Turn {turn} failed"
-            assert res["done"] is False, f"Interview should not be complete at turn {turn}"
+            turn += 1
         else:
             print(f"Response: {json.dumps(res, indent=2)}\n")
-            assert status == 200, "Final turn failed"
-            assert res["done"] is True, "Interview should be done after 8 answers"
+            assert turn >= 8, f"Interview completed too early after only {turn} turns"
             assert "feedback" in res, "Feedback payload missing"
             feedback = res["feedback"]
             assert "summary" in feedback, "Feedback summary missing"

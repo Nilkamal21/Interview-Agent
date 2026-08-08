@@ -611,6 +611,13 @@
             color: var(--info);
         }
 
+        .not-assessed-item {
+            border-left: 3px solid var(--text-dim);
+        }
+        .not-assessed-item i {
+            color: var(--text-dim);
+        }
+
         /* Placeholder state for Chat */
         .chat-placeholder {
             display: flex;
@@ -785,6 +792,12 @@
                             <!-- Dynamically generated next actions -->
                         </ul>
                     </div>
+                    <div class="feedback-section" id="feed-not-assessed-section" style="display: none;">
+                        <span class="feedback-section-title">Not Assessed in This Interview</span>
+                        <ul id="feed-not-assessed" class="feedback-list">
+                            <!-- Dynamically generated unassessed days -->
+                        </ul>
+                    </div>
                 </div>
             </section>
         </main>
@@ -822,6 +835,8 @@
         const feedStrengths = document.getElementById("feed-strengths");
         const feedGaps = document.getElementById("feed-gaps");
         const feedNext = document.getElementById("feed-next");
+        const feedNotAssessed = document.getElementById("feed-not-assessed");
+        const feedNotAssessedSection = document.getElementById("feed-not-assessed-section");
 
         // Load candidates list on page load
         window.addEventListener("DOMContentLoaded", async () => {
@@ -1009,6 +1024,7 @@
             btnSend.disabled = true;
             
             feedbackPanel.classList.remove("visible");
+            feedNotAssessedSection.style.display = "none";
         });
 
         // Helper: Append bubbles
@@ -1060,6 +1076,14 @@
             renderList(feedStrengths, feed.strengths, "fa-solid fa-circle-check", "strength-item");
             renderList(feedGaps, feed.gaps, "fa-solid fa-triangle-exclamation", "gap-item");
             renderList(feedNext, feed.next, "fa-solid fa-circle-arrow-right", "next-item");
+            
+            // Render unassessed days
+            if (feed.notAssessed && feed.notAssessed.length > 0) {
+                renderList(feedNotAssessed, feed.notAssessed, "fa-solid fa-circle-minus", "not-assessed-item");
+                feedNotAssessedSection.style.display = "flex";
+            } else {
+                feedNotAssessedSection.style.display = "none";
+            }
             
             // Slide in the panel
             feedbackPanel.classList.add("visible");

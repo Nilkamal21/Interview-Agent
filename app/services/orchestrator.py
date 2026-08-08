@@ -56,6 +56,7 @@ def get_system_prompt(candidate: Dict[str, Any]) -> str:
     """
     Defines the interviewer persona and calibrates difficulty and tone based on candidate profile.
     It also guides conversational mechanics such as short acknowledgments, name frequency, and topic transitions.
+    Additionally, it calibrates question depth and framing based on technical/non-technical roles.
     """
     member = candidate.get("member", {})
     name = member.get("name", "Candidate")
@@ -64,26 +65,45 @@ def get_system_prompt(candidate: Dict[str, Any]) -> str:
     exp = member.get("yearsExperience", 2)
     edu = member.get("education", "N/A")
     
-    # Calibrate tone and depth based on years of experience
+    # Identify if candidate is in an engineering/technical role or non-engineering role
+    eng_keywords = ["engineer", "developer", "architect", "programmer", "coder", "devops", "scripter", "specialist"]
+    # Check explicitly for roles like Business Analyst or Marketing Manager which are non-eng
+    is_engineer = any(kw in role.lower() for kw in eng_keywords) and "analyst" not in role.lower() and "manager" not in role.lower()
+    
+    # Seniority adjustments
     if exp >= 10:
         seniority_guideline = (
             "The candidate is highly experienced (Senior/Principal/Distinguished level). "
-            "You should push them hard on trade-offs, architecture, edge cases, scalability, "
-            "production challenges, and security. Do not accept high-level buzzwords; demand deep technical justifications. "
-            "Tone should be demanding, highly professional, and direct."
+            "Focus heavily on system design, trade-offs, architecture, scalability, cost optimization, "
+            "production challenges, and security. Tone should be demanding, highly professional, and direct."
         )
     elif exp >= 4:
         seniority_guideline = (
             "The candidate is mid-to-senior level. "
-            "Ask about implementation details, design decisions, practical trade-offs, "
-            "and how they handled failures or debugging. Keep the questions professional and moderately challenging."
+            "Ask about implementation tradeoffs, design decisions, practical bottlenecks, "
+            "and how they debugged or handled failures."
         )
     else:
         seniority_guideline = (
             "The candidate is junior or an intern. "
-            "Focus on foundational understanding of the concepts, clear explanation of how the tools work, "
-            "and basic implementation. Be encouraging but ensure they actually understand what they built and didn't "
-            "just copy-paste code."
+            "Focus on basic definitions, explain-this-concept style checks, and how the core tools work. "
+            "Be encouraging and verify they actually understand the foundation."
+        )
+        
+    # Role-based depth calibration
+    if is_engineer:
+        role_guideline = (
+            "Because the candidate is in an ENGINEERING/TECHNICAL role, ask implementation-level questions. "
+            "Drill into specific code details, architectural decisions, libraries, APIs, hyperparameters, "
+            "and technical tradeoffs at the system/code level."
+        )
+    else:
+        role_guideline = (
+            "Because the candidate is in a NON-ENGINEERING role (e.g. Analyst, Manager, Specialist, Researcher, HR), "
+            "do NOT ask for low-level code, specific syntax, API hyperparameters, or code internals. "
+            "Instead, ask conceptual, product, and business/decision-level questions. "
+            "Focus on WHY they chose a particular approach, what business or user problem it solved, "
+            "and how they evaluated success or trade-offs for the end-user/business outcome."
         )
         
     prompt = f"""You are a skeptical but fair senior technical interviewer conducting an adaptive technical interview.
@@ -91,12 +111,15 @@ Your goal is to evaluate if the candidate truly built their bootcamp projects an
 
 Candidate Profile:
 - Name: {name}
-- Job Role: {role}
+- Job Role: {role} ({"Technical/Engineering" if is_engineer else "Non-Engineering"})
 - Experience: {exp} years
 - Education: {edu}
 
 Seniority & Tone Calibration:
 {seniority_guideline}
+
+Role-based Depth Calibration:
+{role_guideline}
 
 Interviewing Style & Rules:
 1. **Skeptical but Fair**: Act like a real interviewer. Be polite but analytical. If their answer is vague or lacks depth, dig deeper.
@@ -112,6 +135,20 @@ Conversational Dynamics & Pacing (CRITICAL FOR REALISM):
 - **Use the Candidate's Name ({first_name}) Occasionally**: Address the candidate by their first name ({first_name}) occasionally—roughly once every 2-3 questions. Never use it on consecutive turns or repetitively, which sounds robotic.
 - **Vary Follow-up Phrasings**: Vary how you ask follow-up questions to drill into their claims (e.g., "What made you choose that specifically over...", "Walk me through the actual implementation of...", "Let's dig into the details here—...", "I want to push on this a bit—...").
 - **Keep it Tight (2-4 sentences max)**: Do not write walls of text. Combine your acknowledgment, transition (if any), and question into a natural, spoken-feeling response of 2 to 4 sentences total.
+
+Calibration Reference (SAME Curriculum Day Asked Differently):
+
+Example 1: Day 8 (Vector Databases Overview)
+- **Technical/Engineering Option**: "How did you configure index parameters in ChromaDB, and what tradeoffs did you observe between cosine similarity and L2 distance metrics for retrieval latency?"
+- **Non-Engineering Option**: "Why did you decide to use a vector database for the chatbot instead of a standard relational database, and how did this impact the user experience when searching for healthcare plans?"
+
+Example 2: Day 12 (Prompt Engineering Fundamentals)
+- **Technical/Engineering Option**: "How did you structure your system prompts for few-shot learning, and did you implement any token optimization techniques like prompt caching?"
+- **Non-Engineering Option**: "How did you design the chatbot's system prompt to ensure the answers were compliant with healthcare regulations and sounded professional to customers?"
+
+Example 3: Day 28 (Docker & Deployment)
+- **Technical/Engineering Option**: "How did you configure multi-stage builds in your Dockerfile to optimize image size, and how did you configure Kubernetes liveness and readiness probes?"
+- **Non-Engineering Option**: "Why is containerizing the application with Docker useful for deploying the chatbot, and how does it help ensure the service remains reliable for users?"
 
 Example Conversational Turns (Acknowledge → Transition → Ask Pattern):
 
@@ -168,6 +205,7 @@ You must return a JSON response with the following format:
 def generate_feedback(session: Dict[str, Any]) -> Dict[str, Any]:
     """
     Evaluates the entire chat history and generates structured feedback.
+    Gaps and strengths are grounded strictly in the transcript, using bootcamp history only as secondary corroboration.
     """
     client = get_groq_client()
     candidate = session["candidate"]
@@ -214,8 +252,8 @@ Interview Evaluations (by Day):
 
 Please generate feedback matching these specifications:
 1. **summary**: Exactly 2-3 sentences. It MUST explicitly reference the specific curriculum days discussed: {discussed_days_str}. It should summarize their performance and communication style.
-2. **strengths**: A list of 2-3 concrete points. Each point MUST be tied to a specific answer and curriculum day. Avoid generic praise like "good communicator" or "strong skills."
-3. **gaps**: A list of 2-3 concrete weak areas. Each point MUST be tied to a specific curriculum day and answer. Specifically highlight any correlation where the candidate's bootcamp mission record (e.g. skipped, high attempts, or failed days) matched their actual struggles or lack of knowledge shown in the interview.
+2. **strengths**: A list of 2-3 concrete points. Each point MUST be grounded ONLY in the candidate's actual answers in the interview. Do NOT assume strengths.
+3. **gaps**: A list of 2-3 concrete weak areas. Each gap MUST be strictly grounded in what the candidate actually said (or failed to say) in this interview. Do NOT claim the candidate struggled on a topic based solely on their bootcamp record. If they answered correctly, they do not have a gap. You may use their bootcamp struggles (such as skipped or high attempts days) ONLY as secondary corroboration AFTER an actual gap is demonstrated in their answer (e.g. 'This gap aligns with their bootcamp record of 5 attempts on Day 12').
 4. **next**: A list of 2-3 actionable, highly specific recommendations to help them improve (e.g., "revisit Day 8 vector database indexing strategies" or "practice building ReAct tool loops on Day 21").
 
 You must return a JSON response with the following format:
@@ -236,7 +274,26 @@ You must return a JSON response with the following format:
         response_format={"type": "json_object"}
     )
     
-    return clean_and_parse_json(response.choices[0].message.content)
+    feedback = clean_and_parse_json(response.choices[0].message.content)
+    
+    # Calculate notAssessed days programmatically in Python for 100% accuracy
+    try:
+        curriculum = load_curriculum()
+        curriculum_map = {d["day"]: d for d in curriculum.get("days", [])}
+        
+        candidate_days = set(m.get("day") for m in candidate.get("missions", []))
+        discussed_days_set = set(ev["day"] for ev in evaluations)
+        unassessed_days = sorted(list(candidate_days - discussed_days_set))
+        
+        unassessed_list = []
+        for d in unassessed_days:
+            if d in curriculum_map:
+                unassessed_list.append(f"Day {d}: {curriculum_map[d]['title']}")
+        feedback["notAssessed"] = unassessed_list
+    except Exception:
+        feedback["notAssessed"] = []
+        
+    return feedback
 
 def init_session(session_id: str, candidate: Dict[str, Any]) -> Dict[str, Any]:
     """
