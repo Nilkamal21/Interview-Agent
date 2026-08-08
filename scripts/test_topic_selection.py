@@ -44,6 +44,7 @@ def run_selection_test():
                 
             print(f"  {idx}. Day {item['day']}: {item['title']}")
             print(f"     Status: {status_str}")
+            print(f"     Reason: {item.get('reason')}")
         print("-" * 70)
         
         # Specific Assertions

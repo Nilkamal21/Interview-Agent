@@ -60,10 +60,16 @@ class FeedbackDetail(BaseModel):
     next: List[str]
     notAssessed: Optional[List[str]] = None
 
+class InterviewPlanItem(BaseModel):
+    day: int = Field(..., description="Curriculum day number")
+    title: str = Field(..., description="Curriculum day title")
+    reason: str = Field(..., description="Interviewer reason for selecting this day")
+
 class InterviewResponse(BaseModel):
     reply: str
     done: bool
     feedback: Optional[FeedbackDetail] = None
+    interviewPlan: Optional[List[InterviewPlanItem]] = None
 
 @router.post("/interview", response_model=InterviewResponse)
 async def handle_interview(request: InterviewRequest):

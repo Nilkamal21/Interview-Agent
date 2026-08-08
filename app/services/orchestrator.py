@@ -329,9 +329,19 @@ def init_session(session_id: str, candidate: Dict[str, Any]) -> Dict[str, Any]:
     curriculum = load_curriculum()
     selected_topics = select_interview_topics(candidate, curriculum)
     
+    interview_plan = [
+        {
+            "day": t["day"],
+            "title": t["title"],
+            "reason": t.get("reason", "")
+        }
+        for t in selected_topics
+    ]
+    
     session = {
         "candidate": candidate,
         "selected_topics": selected_topics,
+        "interview_plan": interview_plan,
         "current_topic_index": 0,
         "question_count": 0,
         "questions_by_day": {},  # Maps day_num -> count
@@ -356,7 +366,8 @@ def init_session(session_id: str, candidate: Dict[str, Any]) -> Dict[str, Any]:
     
     return {
         "reply": question,
-        "done": False
+        "done": False,
+        "interviewPlan": interview_plan
     }
 
 def process_turn(session_id: str, message: str) -> Dict[str, Any]:

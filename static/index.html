@@ -194,6 +194,35 @@
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
         }
 
+        /* Personalization Plan styles */
+        .plan-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .plan-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .plan-item-header {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .plan-item-reason {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
         /* Profile Card */
         .profile-card {
             background: rgba(255, 255, 255, 0.02);
@@ -712,6 +741,14 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Personalization Plan -->
+                <div id="plan-container" style="display: none; margin-top: 1.5rem;">
+                    <div class="sidebar-section-title">Personalization Plan</div>
+                    <div id="plan-list" class="plan-list">
+                        <!-- Plan items get added here dynamically -->
+                    </div>
+                </div>
             </div>
 
             <!-- Controls -->
@@ -838,6 +875,36 @@
         const feedNotAssessed = document.getElementById("feed-not-assessed");
         const feedNotAssessedSection = document.getElementById("feed-not-assessed-section");
 
+        // Personalization Plan nodes
+        const planContainer = document.getElementById("plan-container");
+        const planList = document.getElementById("plan-list");
+
+        function renderInterviewPlan(plan) {
+            if (!planList || !planContainer) return;
+            planList.innerHTML = "";
+            if (!plan || plan.length === 0) {
+                planContainer.style.display = "none";
+                return;
+            }
+            plan.forEach(item => {
+                const planItem = document.createElement("div");
+                planItem.className = "plan-item";
+                
+                const header = document.createElement("div");
+                header.className = "plan-item-header";
+                header.textContent = `Day ${item.day}: ${item.title}`;
+                
+                const reason = document.createElement("div");
+                reason.className = "plan-item-reason";
+                reason.textContent = item.reason;
+                
+                planItem.appendChild(header);
+                planItem.appendChild(reason);
+                planList.appendChild(planItem);
+            });
+            planContainer.style.display = "block";
+        }
+
         // Load candidates list on page load
         window.addEventListener("DOMContentLoaded", async () => {
             try {
@@ -862,6 +929,7 @@
         // Dropdown selection change handler
         candidateSelect.addEventListener("change", (e) => {
             const val = e.target.value;
+            if (planContainer) planContainer.style.display = "none";
             if (!val) {
                 profileContainer.style.display = "none";
                 btnStart.disabled = true;
@@ -920,6 +988,11 @@
                 showTyping(false);
                 if (!response.ok) throw new Error("Failed to initialize session");
                 const resData = await response.json();
+                
+                // Render Interview Plan in UI
+                if (resData.interviewPlan) {
+                    renderInterviewPlan(resData.interviewPlan);
+                }
                 
                 // Render Welcome Message
                 appendMessage("interviewer", "System", resData.reply);

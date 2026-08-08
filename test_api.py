@@ -46,7 +46,8 @@ def run_tests():
         sys.exit(1)
     
     print(f"Interviewer (Q1): {res['reply']}")
-    print(f"Done: {res['done']}\n")
+    print(f"Done: {res['done']}")
+    print(f"Interview Plan: {res.get('interviewPlan')}\n")
     
     assert status == 200, "Initialization failed"
     assert res["done"] is False, "Interview should not be done on init"
