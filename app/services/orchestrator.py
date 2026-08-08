@@ -170,14 +170,16 @@ Interviewer: "Specializing the validator role is a standard pattern to prevent s
 def call_llm_with_retry(messages: List[Dict[str, Any]], response_format: Dict[str, Any] = None, max_retries: int = 3, timeout: float = 15.0) -> str:
     """
     Executes a Groq LLM completion call with timeout and exponential backoff retry handling.
+    Falls back to llama-3.1-8b-instant if the versatile model hits rate limits (status 429).
     """
     client = get_groq_client()
     backoff = 1.0
+    model = "llama-3.3-70b-versatile"
     
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=model,
                 messages=messages,
                 temperature=0.7,
                 response_format=response_format,
@@ -191,6 +193,14 @@ def call_llm_with_retry(messages: List[Dict[str, Any]], response_format: Dict[st
             backoff *= 2.0
         except APIError as e:
             if e.status_code == 429:
+                # If rate limit is hit, switch model to llama-3.1-8b-instant
+                if model == "llama-3.3-70b-versatile":
+                    print(f"[WARNING] Rate limit hit for {model}. Falling back to llama-3.1-8b-instant.")
+                    model = "llama-3.1-8b-instant"
+                    # Reset backoff and retry immediately with the fallback model
+                    backoff = 1.0
+                    continue
+                
                 if attempt == max_retries - 1:
                     raise RuntimeError("Rate limit exceeded for the AI model. Please wait a moment and try again.")
                 time.sleep(backoff + 2.0)
