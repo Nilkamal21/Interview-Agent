@@ -143,9 +143,13 @@ dmypy.json
 # pytype static analyzer
 .pytype/
 
-# Cython debug symbols
-cython_debug/
-
 # OS-specific
 .DS_Store
 Thumbs.db
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*.log
