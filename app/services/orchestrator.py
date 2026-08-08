@@ -221,7 +221,7 @@ def init_session(session_id: str, candidate: Dict[str, Any]) -> Dict[str, Any]:
     curriculum = load_curriculum()
     selected_topics = select_interview_topics(candidate, curriculum)
     
-    sessions[session_id] = {
+    session = {
         "candidate": candidate,
         "selected_topics": selected_topics,
         "current_topic_index": 0,
@@ -233,8 +233,21 @@ def init_session(session_id: str, candidate: Dict[str, Any]) -> Dict[str, Any]:
         "system_prompt": get_system_prompt(candidate)
     }
     
+    sessions[session_id] = session
+    
+    # Ask the very first question on session start immediately
+    question = generate_first_question(session)
+    session["history"].append({"role": "assistant", "content": question})
+    session["question_count"] = 1
+    
+    first_topic = selected_topics[0]
+    session["questions_by_day"][first_topic["day"]] = 1
+    
+    # Print a debug log
+    print(f"[DEBUG] Session {session_id} initialized. Question 1 asked on Day {first_topic['day']}. Total questions: 1, Distinct days: 1")
+    
     return {
-        "reply": "Welcome. Let's begin your interview.",
+        "reply": question,
         "done": False
     }
 
@@ -259,21 +272,66 @@ def process_turn(session_id: str, message: str) -> Dict[str, Any]:
     
     question_count = session["question_count"]
     
-    # 1. Ask the very first question if none has been asked
-    if question_count == 0:
-        question = generate_first_question(session)
-        session["history"].append({"role": "assistant", "content": question})
-        session["question_count"] = 1
+    # Calculate distinct days covered so far (any day with a question count > 0)
+    distinct_days_covered = len([day for day, count in session["questions_by_day"].items() if count > 0])
+    
+    # Print a debug log showing count information as requested
+    print(f"[DEBUG] Session {session_id} - Turn processed. Total questions asked so far: {question_count}, Distinct days covered: {distinct_days_covered}")
+    
+    # We only complete the interview if we've asked at least 8 questions AND covered at least 4 distinct days
+    if question_count >= 8 and distinct_days_covered >= 4:
+        # Complete the interview: evaluate final answer and compile feedback
+        current_topic_index = session["current_topic_index"]
+        current_topic = session["selected_topics"][current_topic_index]
         
-        first_topic = session["selected_topics"][0]
-        session["questions_by_day"][first_topic["day"]] = 1
+        client = get_groq_client()
+        
+        eval_prompt = f"""Evaluate the candidate's final response for correctness and completeness relative to the topic:
+Day {current_topic['day']}: {current_topic['title']}
+Tools: {', '.join(current_topic['tools'])}
+Objectives: {', '.join(current_topic['objectives'])}
+
+You must return a JSON response with the following format:
+{{
+  "evaluation": "Your brief evaluation of the candidate's final response."
+}}"""
+
+        eval_messages = [
+            {"role": "system", "content": session["system_prompt"]}
+        ]
+        eval_messages.extend(session["history"])
+        eval_messages.append({"role": "user", "content": eval_prompt})
+        
+        eval_response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=eval_messages,
+            temperature=0.7,
+            response_format={"type": "json_object"}
+        )
+        
+        eval_data = clean_and_parse_json(eval_response.choices[0].message.content)
+        
+        prev_question = session["history"][-2]["content"] if len(session["history"]) >= 2 else ""
+        session["evaluations"].append({
+            "day": current_topic["day"],
+            "question": prev_question,
+            "answer": message,
+            "evaluation": eval_data.get("evaluation", "")
+        })
+        
+        # Generate the structured feedback report
+        feedback = generate_feedback(session)
+        session["feedback"] = feedback
+        session["done"] = True
+        
         return {
-            "reply": question,
-            "done": False
+            "reply": "Interview completed.",
+            "done": True,
+            "feedback": feedback
         }
         
-    # 2. If we have asked questions but haven't reached the 8 question limit:
-    if question_count < 8:
+    else:
+        # Generate the next question
         current_topic_index = session["current_topic_index"]
         selected_topics = session["selected_topics"]
         current_topic = selected_topics[current_topic_index]
@@ -281,9 +339,9 @@ def process_turn(session_id: str, message: str) -> Dict[str, Any]:
         can_move_on = (current_topic_index < len(selected_topics) - 1)
         questions_asked_on_day = session["questions_by_day"].get(current_topic["day"], 0)
         
-        # Enforce state machine rules via guidelines passed to the LLM:
+        # Enforce state machine rules:
         # - Force move on if we've asked 3 questions on the current topic.
-        # - Force follow-up if we are at the last topic and need more questions.
+        # - Force follow-up if we are at the last topic and need more questions to reach 8.
         force_move_on = can_move_on and (questions_asked_on_day >= 3)
         force_followup = (current_topic_index == len(selected_topics) - 1) and (question_count < 8)
         
@@ -353,7 +411,6 @@ You must return a JSON response with the following format:
         next_question = res_data.get("question", "Could you explain more?")
         
         # Save evaluation details
-        # The previous question is located at index -2 in session["history"] (assistant role)
         prev_question = session["history"][-2]["content"] if len(session["history"]) >= 2 else ""
         session["evaluations"].append({
             "day": current_topic["day"],
@@ -377,55 +434,4 @@ You must return a JSON response with the following format:
             "reply": next_question,
             "done": False
         }
-        
-    else:
-        # question_count >= 8
-        # The candidate has responded to all 8 questions. We evaluate their final answer and generate feedback.
-        current_topic_index = session["current_topic_index"]
-        current_topic = session["selected_topics"][current_topic_index]
-        
-        client = get_groq_client()
-        
-        eval_prompt = f"""Evaluate the candidate's final response for correctness and completeness relative to the topic:
-Day {current_topic['day']}: {current_topic['title']}
-Tools: {', '.join(current_topic['tools'])}
-Objectives: {', '.join(current_topic['objectives'])}
 
-You must return a JSON response with the following format:
-{{
-  "evaluation": "Your brief evaluation of the candidate's final response."
-}}"""
-
-        eval_messages = [
-            {"role": "system", "content": session["system_prompt"]}
-        ]
-        eval_messages.extend(session["history"])
-        eval_messages.append({"role": "user", "content": eval_prompt})
-        
-        eval_response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=eval_messages,
-            temperature=0.7,
-            response_format={"type": "json_object"}
-        )
-        
-        eval_data = clean_and_parse_json(eval_response.choices[0].message.content)
-        
-        prev_question = session["history"][-2]["content"] if len(session["history"]) >= 2 else ""
-        session["evaluations"].append({
-            "day": current_topic["day"],
-            "question": prev_question,
-            "answer": message,
-            "evaluation": eval_data.get("evaluation", "")
-        })
-        
-        # Generate the structured feedback report
-        feedback = generate_feedback(session)
-        session["feedback"] = feedback
-        session["done"] = True
-        
-        return {
-            "reply": "Interview completed.",
-            "done": True,
-            "feedback": feedback
-        }
