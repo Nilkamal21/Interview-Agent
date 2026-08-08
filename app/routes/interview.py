@@ -1,9 +1,27 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
+import os
+import json
 from app.services.orchestrator import init_session, process_turn
 
 router = APIRouter(prefix="/api", tags=["Interview"])
+
+@router.get("/candidates")
+async def get_candidates():
+    """
+    Returns the full candidates list to populate the frontend selection dashboard.
+    """
+    try:
+        path = os.path.join("data", "candidates.json")
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load candidates dataset: {str(e)}"
+        )
 
 # Pydantic models for API validation
 class InterviewRequest(BaseModel):

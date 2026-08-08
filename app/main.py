@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.routes.interview import router as interview_router
 
 app = FastAPI(
@@ -16,3 +17,7 @@ async def health_check():
     Health check endpoint for deployment environments (Render, Railway, etc.).
     """
     return {"status": "ok"}
+
+# Serve static files at root
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
