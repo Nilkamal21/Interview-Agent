@@ -24,9 +24,33 @@ async def get_candidates():
         )
 
 # Pydantic models for API validation
+class CandidateMember(BaseModel):
+    id: str = Field(..., description="Candidate unique ID")
+    name: str = Field(..., description="Candidate name")
+    jobRole: str = Field(..., description="Candidate job role")
+    yearsExperience: int = Field(..., description="Years of experience")
+    education: str = Field(..., description="Candidate education details")
+
+class CandidateMission(BaseModel):
+    day: int = Field(..., description="Day number of the curriculum")
+    title: str = Field(..., description="Curriculum day title")
+    passed: Optional[bool] = Field(None, description="Whether they passed the mission")
+    attempts: Optional[int] = Field(None, description="Number of attempts on the mission")
+    skipped: Optional[bool] = Field(None, description="Whether they skipped the mission")
+
+class CandidateDetail(BaseModel):
+    member: CandidateMember
+    missions: List[CandidateMission]
+    signals: Optional[Dict[str, Any]] = None
+
 class InterviewRequest(BaseModel):
-    sessionId: str = Field(..., description="Unique identifier for the interview session")
-    candidate: Optional[Dict[str, Any]] = Field(None, description="Candidate details, provided only on the first turn")
+    sessionId: str = Field(
+        ..., 
+        min_length=1, 
+        pattern=r"^[a-zA-Z0-9\-_]+$", 
+        description="Unique identifier for the interview session (alphanumeric, hyphens, underscores)"
+    )
+    candidate: Optional[CandidateDetail] = Field(None, description="Candidate details, provided only on the first turn")
     message: Optional[str] = Field(None, description="Candidate response, provided on subsequent turns")
 
 class FeedbackDetail(BaseModel):
@@ -45,7 +69,7 @@ class InterviewResponse(BaseModel):
 async def handle_interview(request: InterviewRequest):
     session_id = request.sessionId.strip()
     
-    # 1. Validate sessionId is not empty
+    # 1. Validate sessionId is not empty (redundant but safe fallback)
     if not session_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -62,7 +86,8 @@ async def handle_interview(request: InterviewRequest):
     # 3. Handle Start Interview (when candidate is provided)
     if request.candidate is not None:
         try:
-            response_payload = init_session(session_id, request.candidate)
+            # Convert Pydantic model to a dict before passing it to service layer
+            response_payload = init_session(session_id, request.candidate.dict())
             return InterviewResponse(**response_payload)
         except Exception as e:
             raise HTTPException(

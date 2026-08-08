@@ -1,8 +1,9 @@
 import os
 import json
 import re
+import time
 from typing import Dict, Any, List
-from groq import Groq
+from groq import Groq, APIError, APIConnectionError, APITimeoutError
 from dotenv import load_dotenv
 from app.services.topic_selector import select_interview_topics
 
@@ -166,12 +167,46 @@ Interviewer: "Specializing the validator role is a standard pattern to prevent s
 """
     return prompt
 
+def call_llm_with_retry(messages: List[Dict[str, Any]], response_format: Dict[str, Any] = None, max_retries: int = 3, timeout: float = 15.0) -> str:
+    """
+    Executes a Groq LLM completion call with timeout and exponential backoff retry handling.
+    """
+    client = get_groq_client()
+    backoff = 1.0
+    
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                temperature=0.7,
+                response_format=response_format,
+                timeout=timeout
+            )
+            return response.choices[0].message.content
+        except (APIConnectionError, APITimeoutError) as e:
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"Failed to communicate with the AI model after {max_retries} attempts: {str(e)}")
+            time.sleep(backoff)
+            backoff *= 2.0
+        except APIError as e:
+            if e.status_code == 429:
+                if attempt == max_retries - 1:
+                    raise RuntimeError("Rate limit exceeded for the AI model. Please wait a moment and try again.")
+                time.sleep(backoff + 2.0)
+                backoff *= 2.0
+            else:
+                raise RuntimeError(f"AI model API error (status {e.status_code}): {e.message}")
+        except Exception as e:
+            raise RuntimeError(f"An unexpected error occurred while communicating with the AI model: {str(e)}")
+            
+    raise RuntimeError("AI model communication failed.")
+
 def generate_first_question(session: Dict[str, Any]) -> str:
     """
     Generates the initial starting question for the first selected topic.
     """
     topic = session["selected_topics"][0]
-    client = get_groq_client()
     
     prompt = f"""We are starting the interview. The first topic is:
 Day {topic['day']}: {topic['title']}
@@ -189,17 +224,13 @@ You must return a JSON response with the following format:
   "question": "Your starting question here."
 }}"""
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": session["system_prompt"]},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-        response_format={"type": "json_object"}
-    )
+    messages = [
+        {"role": "system", "content": session["system_prompt"]},
+        {"role": "user", "content": prompt}
+    ]
     
-    res_data = clean_and_parse_json(response.choices[0].message.content)
+    content = call_llm_with_retry(messages, response_format={"type": "json_object"})
+    res_data = clean_and_parse_json(content)
     return res_data["question"]
 
 def generate_feedback(session: Dict[str, Any]) -> Dict[str, Any]:
@@ -264,17 +295,13 @@ You must return a JSON response with the following format:
   "next": ["...", "..."]
 }}"""
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": session["system_prompt"]},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-        response_format={"type": "json_object"}
-    )
+    messages = [
+        {"role": "system", "content": session["system_prompt"]},
+        {"role": "user", "content": prompt}
+    ]
     
-    feedback = clean_and_parse_json(response.choices[0].message.content)
+    content = call_llm_with_retry(messages, response_format={"type": "json_object"})
+    feedback = clean_and_parse_json(content)
     
     # Calculate notAssessed days programmatically in Python for 100% accuracy
     try:
@@ -383,14 +410,8 @@ You must return a JSON response with the following format:
         eval_messages.extend(session["history"])
         eval_messages.append({"role": "user", "content": eval_prompt})
         
-        eval_response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=eval_messages,
-            temperature=0.7,
-            response_format={"type": "json_object"}
-        )
-        
-        eval_data = clean_and_parse_json(eval_response.choices[0].message.content)
+        eval_content = call_llm_with_retry(eval_messages, response_format={"type": "json_object"})
+        eval_data = clean_and_parse_json(eval_content)
         
         prev_question = session["history"][-2]["content"] if len(session["history"]) >= 2 else ""
         session["evaluations"].append({
@@ -478,14 +499,8 @@ You must return a JSON response with the following format:
         messages.extend(session["history"])
         messages.append({"role": "user", "content": prompt})
         
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            temperature=0.7,
-            response_format={"type": "json_object"}
-        )
-        
-        res_data = clean_and_parse_json(response.choices[0].message.content)
+        content = call_llm_with_retry(messages, response_format={"type": "json_object"})
+        res_data = clean_and_parse_json(content)
         
         evaluation = res_data.get("evaluation", "")
         decision = res_data.get("decision", "FOLLOW_UP")

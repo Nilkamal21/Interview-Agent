@@ -101,6 +101,29 @@ def run_tests():
     print(f"Response: {res}\n")
     assert status == 400, "Should return HTTP 400"
     
+    print("=== TEST 4: Error - Malformed Session ID ===")
+    payload = {
+        "sessionId": "invalid session id with spaces!",
+        "candidate": candidate_data
+    }
+    status, res = make_post_request(f"{BASE_URL}/interview", payload)
+    print(f"Status: {status}")
+    print(f"Response: {res}\n")
+    assert status == 422, "Should return HTTP 422 due to pattern validation failure"
+
+    print("=== TEST 5: Error - Candidate Missing Required Fields ===")
+    bad_candidate = candidate_data.copy()
+    if "member" in bad_candidate:
+        del bad_candidate["member"]
+    payload = {
+        "sessionId": "test-session-bad-cand",
+        "candidate": bad_candidate
+    }
+    status, res = make_post_request(f"{BASE_URL}/interview", payload)
+    print(f"Status: {status}")
+    print(f"Response: {res}\n")
+    assert status == 422, "Should return HTTP 422 due to missing member details"
+    
     print("ALL TESTS PASSED SUCCESSFULLY!")
 
 if __name__ == "__main__":
