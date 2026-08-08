@@ -151,6 +151,9 @@ def generate_feedback(session: Dict[str, Any]) -> Dict[str, Any]:
     
     # Format a summary of the turn evaluations
     evals_summary = []
+    discussed_days = sorted(list(set(ev["day"] for ev in evaluations)))
+    discussed_days_str = ", ".join(f"Day {d}" for d in discussed_days)
+    
     for ev in evaluations:
         evals_summary.append(f"""Topic Day {ev['day']}:
 - Question: {ev['question']}
@@ -158,22 +161,38 @@ def generate_feedback(session: Dict[str, Any]) -> Dict[str, Any]:
 - Evaluation: {ev['evaluation']}
 """)
         
+    # Format candidate's bootcamp results for correlation check in gaps
+    bootcamp_struggles = []
+    for m in candidate.get("missions", []):
+        day_num = m.get("day")
+        if m.get("skipped"):
+            bootcamp_struggles.append(f"Day {day_num} was SKIPPED")
+        elif m.get("passed") is False:
+            bootcamp_struggles.append(f"Day {day_num} was FAILED with {m.get('attempts', 0)} attempts")
+        elif m.get("attempts", 1) >= 3:
+            bootcamp_struggles.append(f"Day {day_num} was passed but struggled (took {m.get('attempts')} attempts)")
+            
+    bootcamp_summary = ", ".join(bootcamp_struggles) if bootcamp_struggles else "No major struggles or skips recorded in bootcamp."
+
     prompt = f"""You are the senior technical interviewer. The interview is now complete.
-Please review the candidate's profile and the evaluations of their answers to generate the final structured feedback.
+Please review the candidate's profile, their bootcamp record, and the evaluations of their answers to generate the final structured feedback.
 
 Candidate Profile:
 - Name: {candidate['member']['name']}
 - Job Role: {candidate['member']['jobRole']}
 - Experience: {candidate['member']['yearsExperience']} years
 
-Interview Evaluations:
+Candidate's Bootcamp Struggles/Skips:
+- {bootcamp_summary}
+
+Interview Evaluations (by Day):
 {chr(10).join(evals_summary)}
 
-Please generate feedback with the following requirements:
-1. **summary**: A detailed 3-4 sentence summary of their performance, technical depth, communication style, and readiness. Reference specific areas where they did well or struggled.
-2. **strengths**: A list of 2-3 specific technical strengths demonstrated in their answers, referencing specific tools/concepts they discussed.
-3. **gaps**: A list of 2-3 specific knowledge gaps or weaknesses identified during the interview, referencing specific tools/concepts.
-4. **next**: A list of 2-3 actionable, concrete next steps they should take to improve (e.g. read specific docs, build a specific feature, practice a concept).
+Please generate feedback matching these specifications:
+1. **summary**: Exactly 2-3 sentences. It MUST explicitly reference the specific curriculum days discussed: {discussed_days_str}. It should summarize their performance and communication style.
+2. **strengths**: A list of 2-3 concrete points. Each point MUST be tied to a specific answer and curriculum day. Avoid generic praise like "good communicator" or "strong skills."
+3. **gaps**: A list of 2-3 concrete weak areas. Each point MUST be tied to a specific curriculum day and answer. Specifically highlight any correlation where the candidate's bootcamp mission record (e.g. skipped, high attempts, or failed days) matched their actual struggles or lack of knowledge shown in the interview.
+4. **next**: A list of 2-3 actionable, highly specific recommendations to help them improve (e.g., "revisit Day 8 vector database indexing strategies" or "practice building ReAct tool loops on Day 21").
 
 You must return a JSON response with the following format:
 {{
