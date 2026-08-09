@@ -2,6 +2,13 @@
 
 An adaptive, multi-turn AI technical interview agent built for the hackathon. It conducts highly personalized technical interviews grounded in a candidate's actual learning journey, evaluating conceptual and practical understanding while delivering honest, transcript-grounded feedback.
 
+> [!IMPORTANT]
+> **Hosting & Performance Notice**
+> * **Live Demo URL**: [https://interview-agent-rsah.onrender.com/](https://interview-agent-rsah.onrender.com/)
+> * **Render Cold Starts**: Because the application is hosted on Render's Free tier, the server container goes to "sleep" after 15 minutes of inactivity. When visiting the live demo for the first time, it might take **up to 1 minute** to wake up and start. Please wait for it to load!
+> * **Groq Rate-Limit Fallback**: If generating a question takes longer than usual or shows a loading state, the primary `llama-3.3-70b-versatile` model has hit its rate limit. The backend automatically switches to the `llama-3.1-8b-instant` fallback model mid-session so that the interview can continue smoothly without crashing.
+> * For full details, please read [DEPLOYMENT_NOTES.md](file:///C:/Users/adhik/OneDrive/Desktop/Interview%20Agent/DEPLOYMENT_NOTES.md).
+
 ## 1. Project Overview
 
 ### The Problem
@@ -238,4 +245,6 @@ We created automated scripts inside the repository to validate all business rule
 ## 8. Live Demo
 
 The project is deployed and accessible at:
-🔗 **[Live Interview Agent Dashboard](https://interview-agent-production.up.railway.app/)** *(Replace with your deployed URL)*
+* **Live Demo URL**: [https://interview-agent-rsah.onrender.com/](https://interview-agent-rsah.onrender.com/)
+* **Deployment & Troubleshooting Guide**: See [DEPLOYMENT_NOTES.md](file:///C:/Users/adhik/OneDrive/Desktop/Interview%20Agent/DEPLOYMENT_NOTES.md) for cold start and rate-limit details.
+
